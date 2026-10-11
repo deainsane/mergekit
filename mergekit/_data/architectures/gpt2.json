@@ -6,7 +6,7 @@
     "pre_weights": [
         {
             "name": "transformer.wte.weight",
-            "vocabulary_axis": 0,
+            "is_embed": true,
             "aliases": [
                 "wte.weight"
             ]
@@ -33,7 +33,7 @@
         },
         {
             "name": "lm_head.weight",
-            "vocabulary_axis": 0,
+            "is_embed": true,
             "optional": true,
             "tied_names": [
                 "transformer.wte.weight",

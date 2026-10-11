@@ -12,7 +12,7 @@
                 "pre_weights": [
                     {
                         "name": "decoder.embed_tokens.weight",
-                        "vocabulary_axis": 0,
+                        "is_embed": true,
                         "optional": true,
                         "tied_names": [
                             "shared.weight",
@@ -86,7 +86,7 @@
                 "pre_weights": [
                     {
                         "name": "encoder.embed_tokens.weight",
-                        "vocabulary_axis": 0,
+                        "is_embed": true,
                         "optional": true,
                         "tied_names": [
                             "shared.weight",
@@ -145,7 +145,7 @@
                 "pre_weights": [
                     {
                         "name": "shared.weight",
-                        "vocabulary_axis": 0
+                        "is_embed": true
                     }
                 ],
                 "layer_templates": {
@@ -154,7 +154,7 @@
                 "post_weights": [
                     {
                         "name": "lm_head.weight",
-                        "vocabulary_axis": 0,
+                        "is_embed": true,
                         "optional": true,
                         "tied_names": [
                             "shared.weight",

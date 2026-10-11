@@ -9,7 +9,7 @@
         },
         {
             "name": "distilbert.embeddings.word_embeddings.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         },
         {
             "name": "distilbert.embeddings.LayerNorm.bias",

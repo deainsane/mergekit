@@ -12,7 +12,7 @@
         },
         {
             "name": "bert.embeddings.word_embeddings.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         },
         {
             "name": "bert.embeddings.LayerNorm.bias",
@@ -40,8 +40,7 @@
             "name": "bert.pooler.dense.bias"
         },
         {
-            "name": "cls.predictions.bias",
-            "vocabulary_axis": 0
+            "name": "cls.predictions.bias"
         },
         {
             "name": "cls.predictions.decoder.weight",
@@ -49,7 +48,7 @@
             "tied_names": [
                 "bert.embeddings.word_embeddings.weight"
             ],
-            "vocabulary_axis": 0
+            "is_embed": true
         }
     ],
     "num_layers_config_key": "num_hidden_layers",

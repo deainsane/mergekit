@@ -1,22 +1,21 @@
 # Copyright (C) 2026 Arcee AI
 # SPDX-License-Identifier: LGPL-3.0-only
 
-from dataclasses import dataclass
+import logging
 from enum import Enum
-from functools import cached_property
-from typing import Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import torch
-from typing_extensions import Literal
+from pydantic import BaseModel
+from typing_extensions import Literal, override
 
+from mergekit.architecture import WeightInfo
+from mergekit.common import ImmutableMap, ModelReference
+from mergekit.graph import Task
 from mergekit.merge_methods.base import (
-    BasePolicy,
-    GroupMergeMethod,
-    InputContract,
-    MergeMethodSpec,
-    ParameterScope,
-    ParameterSpec,
-    TensorGroup,
+    ConfigParameterDef,
+    MergeMethod,
+    MergeTensorInput,
 )
 from mergekit.sparsify import RescaleNorm, SparsificationMethod, sparsify
 
@@ -26,8 +25,7 @@ class ConsensusMethod(str, Enum):
     sum = "sum"
 
 
-@dataclass(frozen=True)
-class GeneralizedTaskArithmeticMerge(GroupMergeMethod):
+class GeneralizedTaskArithmeticMerge(MergeMethod, BaseModel, frozen=True):
     consensus_method: Optional[ConsensusMethod]
     sparsification_method: Optional[SparsificationMethod]
     default_normalize: bool
@@ -36,113 +34,197 @@ class GeneralizedTaskArithmeticMerge(GroupMergeMethod):
     method_pretty_name: Optional[str]
     method_reference_url: Optional[str]
 
-    @cached_property
-    def spec(self) -> MergeMethodSpec:
-        params = [
-            ParameterSpec("int8_mask", bool, ParameterScope.SHARED, default=False),
-            ParameterSpec(
-                "normalize",
-                bool,
-                ParameterScope.SHARED,
-                default=self.default_normalize,
+    def name(self) -> str:
+        return self.method_name
+
+    @override
+    def pretty_name(self) -> Optional[str]:
+        return self.method_pretty_name
+
+    @override
+    def reference_url(self) -> Optional[str]:
+        return self.method_reference_url
+
+    def parameters(self) -> List[ConfigParameterDef]:
+        return [
+            ConfigParameterDef(name="int8_mask", required=False, default_value=False),
+            ConfigParameterDef(
+                name="normalize", required=False, default_value=self.default_normalize
             ),
-            ParameterSpec(
-                "rescale", bool, ParameterScope.SHARED, default=self.default_rescale
+            ConfigParameterDef(
+                name="rescale", required=False, default_value=self.default_rescale
             ),
-            ParameterSpec("lambda", float, ParameterScope.SHARED, default=1.0),
-            ParameterSpec(
-                "weight",
-                float,
-                ParameterScope.NON_BASE,
-            ),
-            ParameterSpec(
-                "density",
-                float,
-                ParameterScope.NON_BASE,
-                default=1.0,
-            ),
+            ConfigParameterDef(name="lambda", required=False, default_value=1.0),
+        ]
+
+    def tensor_parameters(self) -> List[ConfigParameterDef]:
+        res = [
+            ConfigParameterDef(name="weight", required=True),
+            ConfigParameterDef(name="density", required=False, default_value=1.0),
         ]
         if self.sparsification_method == SparsificationMethod.magnitude_outliers:
-            params.append(
-                ParameterSpec(
-                    "gamma",
-                    float,
-                    ParameterScope.NON_BASE,
-                    default=0.01,
+            res.append(
+                ConfigParameterDef(
+                    name="gamma",
+                    default_value=0.01,
                 )
             )
         if self.sparsification_method == SparsificationMethod.della_magprune:
-            params.append(
-                ParameterSpec(
-                    "epsilon",
-                    float,
-                    ParameterScope.NON_BASE,
-                    default=0.15,
+            res.append(
+                ConfigParameterDef(
+                    name="epsilon",
+                    default_value=0.15,
                 )
             )
-        return MergeMethodSpec(
-            name=self.method_name,
-            pretty_name=self.method_pretty_name,
-            reference_url=self.method_reference_url,
-            parameters=tuple(params),
-            contract=InputContract(base=BasePolicy.REQUIRED),
+        return res
+
+    def make_task(
+        self,
+        output_weight: WeightInfo,
+        tensors: MergeTensorInput,
+        base_model: Optional[ModelReference],
+        parameters: ImmutableMap[str, Any],
+        tensor_parameters: ImmutableMap[ModelReference, ImmutableMap[str, Any]],
+    ) -> Task:
+        return GTATask(
+            method=self,
+            tensors=tensors,
+            base_model=base_model,
+            tensor_parameters=tensor_parameters,
+            int8_mask=parameters["int8_mask"],
+            normalize=parameters["normalize"],
+            lambda_=parameters["lambda"],
+            rescale_norm=RescaleNorm.l1 if parameters["rescale"] else None,
+            weight_info=output_weight,
         )
 
-    def merge_group(self, group: TensorGroup, /, **parameters: Any) -> torch.Tensor:
-        base = group.base.tensor
-        entries = group.non_base
-        if not entries:
+
+class GTATask(Task[torch.Tensor]):
+    method: GeneralizedTaskArithmeticMerge
+    tensors: MergeTensorInput
+    base_model: ModelReference
+    weight_info: WeightInfo
+    tensor_parameters: ImmutableMap[ModelReference, Any]
+    int8_mask: bool
+    normalize: bool
+    lambda_: float
+    rescale_norm: Optional[RescaleNorm]
+
+    def uses_accelerator(self) -> bool:
+        return True
+
+    def arguments(self) -> Dict[str, Task]:
+        return {"tensors": self.tensors}
+
+    def execute(
+        self,
+        tensors: Dict[ModelReference, torch.Tensor],
+        **_kwargs,
+    ) -> torch.Tensor:
+        # collect task vectors
+        tvs, base = get_task_vectors(
+            self.weight_info,
+            self.base_model,
+            tensors,
+            tensor_parameters=self.tensor_parameters.data,
+        )
+        if not tvs:
             return base
 
-        # Sparsification sees independent tensors so filling later rows cannot
-        # invalidate tensors saved for backward by an earlier row.
-        deltas = base.new_empty((len(entries), *base.shape))
-        for index, entry in enumerate(entries):
-            delta = entry.tensor - base
-            if self.sparsification_method:
-                delta = sparsify(
-                    delta,
-                    density=parameters["density"][entry.id],
-                    method=self.sparsification_method,
-                    rescale_norm=RescaleNorm.l1 if parameters["rescale"] else None,
-                    **{
-                        key: parameters[key][entry.id]
-                        for key in ("gamma", "epsilon")
-                        if key in parameters
-                    },
+        # sparsify
+        if self.method.sparsification_method:
+            for tv_info in tvs:
+                kwargs = {}
+                if "gamma" in tv_info:
+                    kwargs["gamma"] = tv_info["gamma"]
+
+                if "epsilon" in tv_info:
+                    kwargs["epsilon"] = tv_info["epsilon"]
+
+                tv_info["delta"] = sparsify(
+                    tv_info["delta"],
+                    density=tv_info["density"],
+                    method=self.method.sparsification_method,
+                    rescale_norm=self.rescale_norm,
+                    **kwargs,
                 )
-            deltas[index] = delta
-            del delta
+
+        deltas = torch.stack([tv["delta"] for tv in tvs], dim=0)
 
         weights = torch.tensor(
-            [parameters["weight"][entry.id] for entry in entries],
-            dtype=deltas.dtype,
-            device=deltas.device,
+            [tv["weight"] for tv in tvs], dtype=deltas.dtype, device=deltas.device
         )
-        while deltas.dim() > weights.dim():
+        while len(deltas.shape) > len(weights.shape):
             weights.unsqueeze_(-1)
-        deltas.mul_(weights)
 
-        if self.consensus_method:
-            mask_dtype = torch.int8 if parameters["int8_mask"] else base.dtype
+        weighted_deltas = deltas * weights
+
+        # get sign consensus and mix deltas
+        if self.method.consensus_method:
+            mask_dtype = torch.int8 if self.int8_mask else base.dtype
             mask = get_mask(
-                deltas,
-                method=self.consensus_method,
+                weighted_deltas,
+                method=self.method.consensus_method,
                 mask_dtype=mask_dtype,
             )
-            mixed_delta = (deltas * mask).sum(dim=0)
+            mixed_delta = (weighted_deltas * mask).sum(dim=0)
             divisor = (weights * mask).sum(dim=0)
             divisor[divisor == 0] = 1
         else:
-            mixed_delta = deltas.sum(dim=0)
+            mixed_delta = weighted_deltas.sum(dim=0)
             divisor = weights.sum(dim=0)
             divisor[divisor.abs() < 1e-8] = 1
 
-        if parameters["normalize"]:
+        if self.normalize:
             mixed_delta /= divisor
-        if parameters["lambda"] != 1:
-            mixed_delta *= parameters["lambda"]
+
+        if self.lambda_ != 1:
+            mixed_delta *= self.lambda_
+
         return (base + mixed_delta).to(base.dtype)
+
+    def group_label(self) -> Optional[str]:
+        return self.tensors.group_label()
+
+
+def get_task_vectors(
+    weight_info: WeightInfo,
+    base_model: ModelReference,
+    tensors: ImmutableMap[ModelReference, torch.Tensor],
+    tensor_parameters: ImmutableMap[ModelReference, ImmutableMap[str, Any]],
+) -> Tuple[List[Dict[str, Any]], torch.Tensor]:
+    keys = list(tensors.keys())
+    base = tensors[base_model]
+
+    parameter_name = weight_info.name
+
+    res = []
+    for model in keys:
+        if model == base_model:
+            continue
+
+        x = tensors[model].to(base.dtype)
+        if x.shape != base.shape:
+            if weight_info.is_embed:
+                x = x[: base.shape[0], : base.shape[1]]
+                logging.warning(f"Using submatrix of {model}:{parameter_name}")
+            else:
+                logging.warning(
+                    f"skipping {model}:{parameter_name} due to size mismatch"
+                )
+                continue
+
+        delta = x - base
+        del x
+        del tensors[model]
+
+        d = {}
+        d["model"] = model
+        d["delta"] = delta
+        for p in tensor_parameters[model]:
+            d[p] = tensor_parameters[model][p]
+        res.append(d)
+    return res, base
 
 
 def get_mask(

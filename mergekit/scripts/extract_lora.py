@@ -408,9 +408,7 @@ def plan_extraction(
                 wi = WeightInfo(
                     name=name + ".weight",
                     optional=True,
-                    vocabulary_axis=(
-                        0 if module is embed_in or module is embed_out else None
-                    ),
+                    is_embed=isinstance(module, nn.Embedding),
                 )
             else:
                 continue

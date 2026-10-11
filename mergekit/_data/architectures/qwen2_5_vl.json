@@ -21,7 +21,7 @@
                 "pre_weights": [
                     {
                         "name": "model.embed_tokens.weight",
-                        "vocabulary_axis": 0
+                        "is_embed": true
                     }
                 ],
                 "post_weights": [
@@ -30,7 +30,7 @@
                     },
                     {
                         "name": "lm_head.weight",
-                        "vocabulary_axis": 0,
+                        "is_embed": true,
                         "optional": true,
                         "tied_names": [
                             "model.embed_tokens.weight"
@@ -117,7 +117,8 @@
                 "num_layers_config_key": "vision_config.depth",
                 "pre_weights": [
                     {
-                        "name": "visual.patch_embed.proj.weight"
+                        "name": "visual.patch_embed.proj.weight",
+                        "is_embed": true
                     }
                 ],
                 "post_weights": [],

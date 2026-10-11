@@ -6,17 +6,16 @@
     "pre_weights": [
         {
             "name": "model.embed_tokens.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         }
     ],
     "post_weights": [
         {
-            "name": "lm_head.bias",
-            "vocabulary_axis": 0
+            "name": "lm_head.bias"
         },
         {
             "name": "lm_head.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         },
         {
             "name": "model.final_layernorm.bias"

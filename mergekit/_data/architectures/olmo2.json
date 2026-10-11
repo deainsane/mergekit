@@ -6,7 +6,7 @@
     "pre_weights": [
         {
             "name": "model.embed_tokens.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         }
     ],
     "num_layers_config_key": "num_hidden_layers",
@@ -53,7 +53,7 @@
         },
         {
             "name": "lm_head.weight",
-            "vocabulary_axis": 0,
+            "is_embed": true,
             "optional": true,
             "tied_names": [
                 "model.embed_tokens.weight"

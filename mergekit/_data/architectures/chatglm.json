@@ -6,7 +6,7 @@
     "pre_weights": [
         {
             "name": "transformer.embedding.word_embeddings.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         },
         {
             "name": "transformer.rotary_pos_emb.inv_freq"
@@ -18,7 +18,7 @@
         },
         {
             "name": "transformer.output_layer.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         }
     ],
     "num_layers_config_key": "num_hidden_layers",

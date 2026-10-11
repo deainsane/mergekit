@@ -18,7 +18,7 @@
         },
         {
             "name": "embeddings.word_embeddings.weight",
-            "vocabulary_axis": 0,
+            "is_embed": true,
             "aliases": [
                 "bert.embeddings.word_embeddings.weight"
             ]

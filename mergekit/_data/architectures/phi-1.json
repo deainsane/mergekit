@@ -6,7 +6,7 @@
     "pre_weights": [
         {
             "name": "layers.0.wte.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         }
     ],
     "num_layers_config_key": "n_layer",
@@ -50,11 +50,11 @@
     "post_weights": [
         {
             "name": "layers.${num_layers}.linear.bias",
-            "vocabulary_axis": 0
+            "is_embed": true
         },
         {
             "name": "layers.${num_layers}.linear.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         },
         {
             "name": "layers.${num_layers}.ln.bias"

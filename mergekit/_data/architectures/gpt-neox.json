@@ -6,7 +6,7 @@
     "pre_weights": [
         {
             "name": "gpt_neox.embed_in.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         }
     ],
     "post_weights": [
@@ -18,7 +18,7 @@
         },
         {
             "name": "embed_out.weight",
-            "vocabulary_axis": 0
+            "is_embed": true
         }
     ],
     "num_layers_config_key": "num_hidden_layers",

@@ -180,7 +180,7 @@ class TensorWriter:
                     content = {
                         "metadata": {
                             "total_size": self.total_size,
-                            "mergekit_version": "0.1.5",
+                            "mergekit_version": "0.1.4",
                         },
                         "weight_map": self.weight_map,
                     }
